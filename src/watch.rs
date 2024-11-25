@@ -250,7 +250,7 @@ async fn init_cursor<T>(client: &Client, params: &WatchParams) -> Result<JsonCur
 
     watch_sql.push_str(" FORMAT JSONEachRowWithProgress");
 
-    let response = client.query(&watch_sql).do_execute(true)?;
+    let response = client.query(&watch_sql).do_execute()?;
     Ok(JsonCursor::new(response))
 }
 

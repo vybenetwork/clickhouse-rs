@@ -19,6 +19,7 @@ const MAX_QUERY_LEN_TO_USE_GET: usize = 8192;
 pub struct Query {
     client: Client,
     sql: SqlBuilder,
+    is_read_only: bool,
 }
 
 impl Query {
@@ -26,6 +27,7 @@ impl Query {
         Self {
             client: client.clone(),
             sql: SqlBuilder::new(template),
+            is_read_only: true,
         }
     }
 
@@ -50,7 +52,7 @@ impl Query {
 
     /// Executes the query.
     pub async fn execute(self) -> Result<()> {
-        self.do_execute(false)?.finish().await
+        self.read_only(false).do_execute()?.finish().await
     }
 
     /// Executes the query, returning a [`RowCursor`] to obtain results.
@@ -78,7 +80,7 @@ impl Query {
         self.sql.bind_fields::<T>();
         self.sql.append(" FORMAT RowBinary");
 
-        let response = self.do_execute(true)?;
+        let response = self.do_execute()?;
         Ok(RowCursor(RowBinaryCursor::new(response)))
     }
 
@@ -124,7 +126,14 @@ impl Query {
         Ok(result)
     }
 
-    pub(crate) fn do_execute(self, read_only: bool) -> Result<Response> {
+    /// Sets the read only option.
+    pub fn read_only(mut self, is_read_only: bool) -> Self {
+        self.is_read_only = is_read_only;
+
+        self
+    }
+
+    pub(crate) fn do_execute(self) -> Result<Response> {
         let query = self.sql.finish()?;
 
         let mut url =
@@ -136,10 +145,10 @@ impl Query {
             pairs.append_pair("database", database);
         }
 
-        let use_post = !read_only || query.len() > MAX_QUERY_LEN_TO_USE_GET;
+        let use_post = !self.is_read_only || query.len() > MAX_QUERY_LEN_TO_USE_GET;
 
         let (method, body, content_length) = if use_post {
-            if read_only {
+            if self.is_read_only {
                 pairs.append_pair("readonly", "1");
             }
             let len = query.len();
